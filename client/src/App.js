@@ -90,55 +90,56 @@ class App extends Component {
   }
 
   sendMessage = () => {
-    const { isUserTurn, currentAgentIndex, agents, currentChatThread } = this.state;
+    const { isUserTurn, agents, currentChatThread, currentRoundResponses } = this.state;
   
-    if (!isUserTurn) {
-      const agent = agents[currentAgentIndex];
-      
-      // Add a system message for the current agent (if you still need this)
-      this.addSystemMessageForAgent(agent);
-  
-      this.showLoading();
-  
-      setTimeout(() => {
-        this.callBackendAPI(currentChatThread)
-          .then((res) => {
-            this.hideLoading();
-            
-            // Create the chat bubble for the assistant's message
-            this.createGPTChatBubble(agent.name, res.data);
-  
-            // Update the current chat thread
-            this.setState(prevState => ({
-              currentChatThread: [
-                ...prevState.currentChatThread,
-                { "role": "assistant", "content": res.data }
-              ],
-              textAreaInput: "",
-              chatLog: {
-                ...prevState.chatLog,
-                [this.state.currentChatId]: currentChatThread
-              }
-            }), () => {
-              // Move to the next agent or set user turn back to true
-              this.setState({
-                currentAgentIndex: (currentAgentIndex + 1) % agents.length
-              }, () => {
-                if (this.state.currentAgentIndex === 0) {
-                  this.setState({ isUserTurn: true });
-                } else {
-                  this.sendMessage();
-                }
-              });
-            });
-          })
-          .catch((err) => {
-            this.hideLoading();
-            this.handleError(err);
-          });
-      }, agent.delay);
+    if (isUserTurn) {
+      // Logic for handling user's turn can go here
+      return;
     }
+  
+    // Get the current agent based on the state
+    const currentAgentIndex = this.state.currentAgentIndex;
+    const agent = agents[currentAgentIndex];
+  
+    // Add a system message for the current agent (if you still need this)
+    this.addSystemMessageForAgent(agent);
+  
+    this.showLoading();
+  
+    setTimeout(() => {
+      // Simulate the API call to get the agent's message
+      this.callBackendAPI(currentChatThread)
+        .then((res) => {
+          this.hideLoading();
+          
+          // Create the chat bubble for the assistant's message
+          this.createGPTChatBubble(agent.name, res.data);
+          
+          // Update the state
+          this.setState(prevState => ({
+            currentChatThread: [...prevState.currentChatThread, { "role": "assistant", "content": res.data }],
+            currentRoundResponses: [...prevState.currentRoundResponses, { "role": "assistant", "content": res.data }]
+          }), () => {
+            // Check if we should move to the next agent or back to the user
+            if (currentAgentIndex === agents.length - 1) {
+              this.setState({ isUserTurn: true, currentRoundResponses: [], currentAgentIndex: 0 });  // Reset to first agent
+            } else {
+              this.setState({ currentAgentIndex: currentAgentIndex + 1 }, () => {
+                this.sendMessage();
+              });
+            }
+          });
+        })
+        .catch((err) => {
+          this.hideLoading();
+          this.handleError(err);
+        });
+    }, agent.delay);
   };
+  
+  
+  
+  
   
   
   
