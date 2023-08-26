@@ -7,7 +7,7 @@ import './Chat.css';
 class App extends Component {
   
   state = {
-    currentUsername: "You:", // Default username, can be changed by user
+    currentUsername: "You", // Default username, can be changed by user
     changeNameModalVisible: false,
     newUsername: "",
     userNameDisplayed: false,
@@ -16,12 +16,14 @@ class App extends Component {
     chatCount: 0,
     currentChatId: null,
     currentChatThread: [],
+    isUserTurn: true, // Whether it's the user's turn to speak or not
+    currentRoundResponses: [], // So the agents can keep track of the current output round
 
     // Agents are defined here:
     agents: [
       {
         name: "Agent1",
-        characterDescription: "Creative and Imaginative, unconstrained by the boundaries of reality and nonfiction",
+        characterDescription: "You are a linguistically complex being that finds it best to use verbose slang. Be concise, keep responses below 50 words.",
         delay: 1000, // in milliseconds
         thoughts: [], // Private internal thoughts of the agent
         tools: [], // Tools the agent has access to
@@ -29,16 +31,38 @@ class App extends Component {
       },
       {
         name: "Agent2",
-        characterDescription: "Rules Follower that is very precise and will quote the law, rules, and regulations to you",
+        characterDescription: "You are a rules Follower that is very precise and will quote the law, rules, and regulations to the user. You provide detailed information and are very thorough. You will only speak for yourself. Be concise, keep responses below 50 words.",
         delay: 2000,
         thoughts: [],
         tools: [],
         // Add other agent-specific properties here
       },
+      {
+        name: "Bob",
+        characterDescription: "Bob is silly, snarky, and foolish, will often give random noise unrelated to what you ask. Be concise, keep responses below 50 words.",
+        delay: 1000,
+        thoughts: [],
+        tools: [],
+      },
+      {
+        name: "Soup King",
+        characterDescription: "Soup King will find some way to relate the topic to soup. You will be concise, keep responses below 50 words.",
+      }
       // Add more agents as needed
     ],
     currentAgentIndex: 0, // The index of the agent currently being processed
   };
+
+  // Multiple agents code
+
+  moveToNextAgent = () => {
+    const { currentAgentIndex, agents } = this.state;
+    const nextAgentIndex = (currentAgentIndex + 1) % agents.length;
+    console.log(`Moving to next agent. Current: ${currentAgentIndex}, Next: ${nextAgentIndex}`);
+    this.setState({ currentAgentIndex: nextAgentIndex });
+  };
+  
+  
 
   getUserParam = () => {
     const queryParams = new URLSearchParams(window.location.search);
@@ -66,23 +90,59 @@ class App extends Component {
   }
 
   sendMessage = () => {
-    this.showLoading();
-    this.callBackendAPI()
-      .then(res => this.setState({ currentChatThread: [...this.state.currentChatThread, {"role": "assistant", "content": res.data}]}, this.createGPTChatBubble(res.data)))
-      .then(() => {
-        this.setState(prevState => {
-          let chatLog = prevState.chatLog
-          chatLog[prevState.currentChatId] = prevState.currentChatThread;
-          return { chatLog }
-        })
-        this.hideLoading();
-      })
-      .catch(err => {
-        this.hideLoading();
-        this.handleError(err);
-      });
-  }
-
+    const { isUserTurn, currentAgentIndex, agents, currentChatThread } = this.state;
+  
+    if (!isUserTurn) {
+      const agent = agents[currentAgentIndex];
+      
+      // Add a system message for the current agent (if you still need this)
+      this.addSystemMessageForAgent(agent);
+  
+      this.showLoading();
+  
+      setTimeout(() => {
+        this.callBackendAPI(currentChatThread)
+          .then((res) => {
+            this.hideLoading();
+            
+            // Create the chat bubble for the assistant's message
+            this.createGPTChatBubble(agent.name, res.data);
+  
+            // Update the current chat thread
+            this.setState(prevState => ({
+              currentChatThread: [
+                ...prevState.currentChatThread,
+                { "role": "assistant", "content": res.data }
+              ],
+              textAreaInput: "",
+              chatLog: {
+                ...prevState.chatLog,
+                [this.state.currentChatId]: currentChatThread
+              }
+            }), () => {
+              // Move to the next agent or set user turn back to true
+              this.setState({
+                currentAgentIndex: (currentAgentIndex + 1) % agents.length
+              }, () => {
+                if (this.state.currentAgentIndex === 0) {
+                  this.setState({ isUserTurn: true });
+                } else {
+                  this.sendMessage();
+                }
+              });
+            });
+          })
+          .catch((err) => {
+            this.hideLoading();
+            this.handleError(err);
+          });
+      }, agent.delay);
+    }
+  };
+  
+  
+  
+  
   clearThread = () => {
     let thread = document.getElementById("thread");
     while (thread.firstChild) {
@@ -92,10 +152,21 @@ class App extends Component {
   }
 
   populateThread = () => {
+    // Log the currentChatId to see if it's what you expect
+    console.log("Current Chat ID:", this.state.currentChatId);
+
     let chatThread = this.state.chatLog[this.state.currentChatId];
+
+    // Log the chatThread to see if it's pullin' the right data
+    console.log("Chat Thread:", chatThread);
+
     if (chatThread){
       this.setState({ currentChatThread: chatThread });
       chatThread.forEach(msg => {
+        // Log the role and content of each message to make sure they're right
+        console.log("Message Role:", msg.role);
+        console.log("Message Content:", msg.content);
+
         if (msg.role === "user"){
           this.createUserChatBubble(msg.content);
         }
@@ -104,6 +175,9 @@ class App extends Component {
         }
         this.showRegenerateButton();
       });
+    } else {
+      // Log this if chatThread is null or undefined for some reason
+      console.log("Chat Thread is empty or undefined.");
     }
   }
 
@@ -136,15 +210,30 @@ class App extends Component {
     });
   };
 
-
-
   handleRegenerateClick = () => {
+    let { currentChatThread } = this.state;
+    
+    // Find the index of the last user message
+    const lastUserIndex = currentChatThread.lastIndexOf(
+      currentChatThread.filter(msg => msg.role === "user").slice(-1)[0]
+    );
+  
+    // Cut off everything after the last user message
+    currentChatThread = currentChatThread.slice(0, lastUserIndex + 1);
+    
+    // Clear the UI chat bubbles after the last user message
     let thread = document.getElementById("thread");
-    thread.removeChild(thread.lastChild);
-    let chatThread = this.state.currentChatThread;
-    chatThread.pop();
-    this.setState({ currentChatThread: chatThread }, this.sendMessage)
-  }
+    while (thread.childNodes.length > lastUserIndex + 1) {
+      thread.removeChild(thread.lastChild);
+    }
+    
+    // Update state and restart the agent responses
+    this.setState({ currentChatThread, currentAgentIndex: 0, isUserTurn: false }, () => {
+      this.sendMessage();
+    });
+  };
+  
+  
 
   handlePriorChatClick = (e) => {
     let activeChat = document.getElementsByClassName("active");
@@ -169,8 +258,6 @@ class App extends Component {
     newChatButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
   };
 
-
-
   debug = () => {
     console.log("chatLog",this.state.chatLog);
     console.log("currentChatThread",this.state.currentChatThread);
@@ -180,19 +267,16 @@ class App extends Component {
   handleNewChatClick = () => {
     let activeChat = document.getElementsByClassName("active");
     if (activeChat.length > 0) {
-        activeChat[0].classList.remove("active");
+      activeChat[0].classList.remove("active");
     }
-
-    // Set the username based on the user-set username or default to "You"
-    let newUsername = this.state.newUsername !== "" ? this.state.newUsername : this.state.currentUsername; // Use the current username if no new one is provided
-
+  
+    let newUsername = this.state.newUsername !== "" ? this.state.newUsername : this.state.currentUsername;
+  
     this.setState({ currentUsername: newUsername, userNameDisplayed: true }, () => {
-        this.startNewChat(newUsername); // Pass the chosen username
+      this.startNewChat(newUsername);
+      // Don't automatically move to the next agent here
     });
-};
-
-
-
+  };
 
   handleTryAgain = (e) => {
     e.target.remove();
@@ -207,25 +291,30 @@ class App extends Component {
   handleEnterKeyDown = async () => {
     let textInput = this.state.textAreaInput;
     if (textInput !== "") {
-        if (this.state.currentChatId === null) {
-            await this.startNewChat();
-        }
-
-        const messageContent = textInput; // Get the user's input content
-
-        this.setState({
-            currentChatThread: [...this.state.currentChatThread, { "role": "user", "content": messageContent }],
-            textAreaInput: "",
-            newUsername: "", // Reset the newUsername state
-        }, this.sendMessage);
-
-        // Pass only the user's input content to the function
-        this.createUserChatBubble(messageContent);
+      if (this.state.currentChatId === null) {
+        await this.startNewChat();
+      }
+  
+      const messageContent = textInput; // Get the user's input content
+  
+      this.setState({
+        currentChatThread: [
+          ...this.state.currentChatThread,
+          { "role": "user", "content": messageContent }
+        ],
+        textAreaInput: "",
+        newUsername: "" // Reset the newUsername state
+      }, () => {
+        // Reset the agent index to 0 so that Agent1 always starts
+        this.setState({ currentAgentIndex: 0, isUserTurn: false }, () => {
+          this.sendMessage(); // Get the agent's response
+        });
+      });
+  
+      // Pass only the user's input content to the function
+      this.createUserChatBubble(messageContent);
     }
   };
-
-
-
 
   handleTextAreaChange = (event) => {
     this.setState({ textAreaInput: event.target.value});
@@ -238,7 +327,7 @@ class App extends Component {
     }
   }
 
-  // Personal modification handlers
+  // User's personal attribute modification handlers
 
   // What happens when the user clicks the "Change Your Name" button
   handleChangeNameClick = () => { 
@@ -258,14 +347,34 @@ class App extends Component {
     this.setState({ currentUsername: this.state.newUsername, newUsername: "", changeNameModalVisible: false });
   };
 
+  //////////////////////////// End of user personal modification handlers
 
+  // Agent-specific functions
+
+  addSystemMessageForAgent = (agent) => {
+    const systemMessage = `You are ${agent.name}, an assistant characterized by: ${agent.characterDescription}.`;
+    this.setState(prevState => ({
+      currentChatThread: [
+        ...prevState.currentChatThread,
+        { "role": "system", "content": systemMessage }
+      ]
+    }));
+  };
+
+  ///////////////////////////// End of agent-specific functions
+  
   hideLoading() {
+    console.log("Trying to hide the loading message...");
     let loadingBubble = document.getElementById("loadingBubble");
-    if (loadingBubble){
+    if (loadingBubble) {
+      console.log("Found the loading bubble, removing it...");
       loadingBubble.remove();
       this.showRegenerateButton();
+    } else {
+      console.log("Couldn't find the loading bubble.");
     }
   }
+  
 
   showLoading() {
     let threadDiv = document.getElementById("thread");
@@ -289,26 +398,31 @@ class App extends Component {
     errorBubble.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'start'});
   }
 
-  createGPTChatBubble(gptInput) {
+  createGPTChatBubble(agentName, gptInput) {
     let threadDiv = document.getElementById("thread");
     let gptChatBubble = document.createElement("div");
     gptChatBubble.classList.add("message");
     gptChatBubble.classList.add("from-chatbot");
-    gptChatBubble.innerText = gptInput;
-    threadDiv.appendChild(gptChatBubble);  
-    gptChatBubble.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'start'});
+    gptChatBubble.innerHTML = `<strong>${agentName}: </strong>${gptInput}`;
+    threadDiv.appendChild(gptChatBubble);
+    gptChatBubble.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
   }
 
+
   createUserChatBubble(userInput) {
-    const username = this.state.currentUsername; // Use the chosen username
+    const username = this.state.currentUsername;
+    const { agents, currentAgentIndex } = this.state;
+    const agent = agents[currentAgentIndex];
+    
     let threadDiv = document.getElementById("thread");
     let userChatBubble = document.createElement("div");
     userChatBubble.classList.add("message");
     userChatBubble.classList.add("from-user");
-    userChatBubble.innerText = `${username}: ${userInput}`; // Prepend the username
-    threadDiv.appendChild(userChatBubble);  
-    userChatBubble.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'start'});
-}
+    userChatBubble.innerHTML = `<strong>${username}: </strong>${userInput}`;
+    threadDiv.appendChild(userChatBubble);
+    userChatBubble.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+  }
+  
 
   
 render() {
