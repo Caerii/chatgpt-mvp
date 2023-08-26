@@ -7,11 +7,37 @@ import './Chat.css';
 class App extends Component {
   
   state = {
+    currentUsername: "You:", // Default username, can be changed by user
+    changeNameModalVisible: false,
+    newUsername: "",
+    userNameDisplayed: false,
     textAreaInput: "",
     chatLog: {},
     chatCount: 0,
     currentChatId: null,
-    currentChatThread: []
+    currentChatThread: [],
+
+    // Agents are defined here:
+    agents: [
+      {
+        name: "Agent1",
+        characterDescription: "Creative and Imaginative, unconstrained by the boundaries of reality and nonfiction",
+        delay: 1000, // in milliseconds
+        thoughts: [], // Private internal thoughts of the agent
+        tools: [], // Tools the agent has access to
+        // Add other agent-specific properties here
+      },
+      {
+        name: "Agent2",
+        characterDescription: "Rules Follower that is very precise and will quote the law, rules, and regulations to you",
+        delay: 2000,
+        thoughts: [],
+        tools: [],
+        // Add other agent-specific properties here
+      },
+      // Add more agents as needed
+    ],
+    currentAgentIndex: 0, // The index of the agent currently being processed
   };
 
   getUserParam = () => {
@@ -97,18 +123,20 @@ class App extends Component {
     regenerateButton.style.visibility = "hidden";
   }
 
-  startNewChat = async () => {
+  startNewChat = async (username) => { // Accept the chosen username as a parameter
     this.setState(prevState => {
-      let chatLog = Object.assign({}, prevState.chatLog);
-      let currentChatId = uuid();
-      chatLog[currentChatId] = [];
-      let chatCount = prevState.chatCount + 1;
-      return { currentChatId, chatLog, chatCount }
+        let chatLog = Object.assign({}, prevState.chatLog);
+        let currentChatId = uuid();
+        chatLog[currentChatId] = [];
+        let chatCount = prevState.chatCount + 1;
+        return { currentChatId, chatLog, chatCount }
     }, () => {
-      this.resetThread();
-      this.createNewChatButton();
+        this.resetThread();
+        this.createNewChatButton(username); // Use the chosen username
     });
-  }
+  };
+
+
 
   handleRegenerateClick = () => {
     let thread = document.getElementById("thread");
@@ -135,11 +163,13 @@ class App extends Component {
     newChatButton.id = this.state.currentChatId;
     newChatButton.classList.add("priorChatButton");
     newChatButton.classList.add("active");
-    newChatButton.innerText = "Chat " + (this.state.chatCount);
+    newChatButton.innerText = `Chat ${this.state.chatCount}`; // Removed the username from here
     newChatButton.onclick = this.handlePriorChatClick;
     chatHistory.appendChild(newChatButton);
-    newChatButton.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'start'});
-  }
+    newChatButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+  };
+
+
 
   debug = () => {
     console.log("chatLog",this.state.chatLog);
@@ -149,11 +179,20 @@ class App extends Component {
 
   handleNewChatClick = () => {
     let activeChat = document.getElementsByClassName("active");
-    if (activeChat.length > 0){
-      activeChat[0].classList.remove("active");
+    if (activeChat.length > 0) {
+        activeChat[0].classList.remove("active");
     }
-    this.startNewChat();
-  }
+
+    // Set the username based on the user-set username or default to "You"
+    let newUsername = this.state.newUsername !== "" ? this.state.newUsername : this.state.currentUsername; // Use the current username if no new one is provided
+
+    this.setState({ currentUsername: newUsername, userNameDisplayed: true }, () => {
+        this.startNewChat(newUsername); // Pass the chosen username
+    });
+};
+
+
+
 
   handleTryAgain = (e) => {
     e.target.remove();
@@ -167,15 +206,26 @@ class App extends Component {
 
   handleEnterKeyDown = async () => {
     let textInput = this.state.textAreaInput;
-    if (textInput !== ""){
-      if (this.state.currentChatId === null){
-        await this.startNewChat();
-      }
-      this.setState({ currentChatThread: [...this.state.currentChatThread, {"role": "user", "content": textInput}]}, this.sendMessage);
-      this.setState({ textAreaInput: ""});
-      this.createUserChatBubble(textInput);
+    if (textInput !== "") {
+        if (this.state.currentChatId === null) {
+            await this.startNewChat();
+        }
+
+        const messageContent = textInput; // Get the user's input content
+
+        this.setState({
+            currentChatThread: [...this.state.currentChatThread, { "role": "user", "content": messageContent }],
+            textAreaInput: "",
+            newUsername: "", // Reset the newUsername state
+        }, this.sendMessage);
+
+        // Pass only the user's input content to the function
+        this.createUserChatBubble(messageContent);
     }
-  }
+  };
+
+
+
 
   handleTextAreaChange = (event) => {
     this.setState({ textAreaInput: event.target.value});
@@ -187,6 +237,27 @@ class App extends Component {
       this.handleEnterKeyDown();
     }
   }
+
+  // Personal modification handlers
+
+  // What happens when the user clicks the "Change Your Name" button
+  handleChangeNameClick = () => { 
+    this.setState({ changeNameModalVisible: true });
+  };
+
+  // What happens when the user types in the "Change Your Name" input box
+  handleCloseChangeNameModal = () => {
+    this.setState({ changeNameModalVisible: false });
+  };
+
+  handleNewUsernameChange = (event) => {
+    this.setState({ newUsername: event.target.value });
+  };
+
+  handleApplyNewUsername = () => {
+    this.setState({ currentUsername: this.state.newUsername, newUsername: "", changeNameModalVisible: false });
+  };
+
 
   hideLoading() {
     let loadingBubble = document.getElementById("loadingBubble");
@@ -229,52 +300,82 @@ class App extends Component {
   }
 
   createUserChatBubble(userInput) {
+    const username = this.state.currentUsername; // Use the chosen username
     let threadDiv = document.getElementById("thread");
     let userChatBubble = document.createElement("div");
     userChatBubble.classList.add("message");
     userChatBubble.classList.add("from-user");
-    userChatBubble.innerText = userInput;
+    userChatBubble.innerText = `${username}: ${userInput}`; // Prepend the username
     threadDiv.appendChild(userChatBubble);  
     userChatBubble.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'start'});
-  }
+}
+
   
-  render() {
-    return (
+render() {
+  return (
       <div className="App">
-        <div id="main-container">
-          <div id="sidebar">
-            <button
-              id="newChatButton"
-              onClick={this.handleNewChatClick}
-            >
-              + New Chat
-            </button>
-            <div id="chat-history"/>
+          <div id="main-container">
+              <div id="sidebar">
+                  <button
+                      id="newChatButton"
+                      onClick={this.handleNewChatClick}
+                  >
+                      + New Chat
+                  </button>
+                  {this.state.userNameDisplayed && (
+                      <div id="user-greeting" className="user-greeting">
+                          Welcome, {this.state.currentUsername}
+                      </div>
+                  )}
+                  <button
+                      id="changeNameButton"
+                      onClick={this.handleChangeNameClick}
+                  >
+                      Change Your Name
+                  </button>
+                  <div id="chat-history" />
+              </div>
+              <div id="chat-container">
+                  <div id="thread"></div>
+                  <button
+                      id="regenerateButton"
+                      onClick={this.handleRegenerateClick}
+                  >
+                      Regenerate
+                  </button>
+                  <div id="textarea-container">
+                      <textarea
+                          id="chat-textarea"
+                          className="chat-textarea"
+                          rows="3"
+                          placeholder="Send a message"
+                          value={this.state.textAreaInput}
+                          onChange={this.handleTextAreaChange}
+                          onKeyDown={this.handleKeyDown}
+                      />
+                  </div>
+              </div>
           </div>
-          <div id="chat-container">
-            <div id="thread"></div>
-            <button
-              id="regenerateButton"
-              onClick={this.handleRegenerateClick}
-            >
-              Regenerate
-            </button>
-            <div id="textarea-container">
-              <textarea
-                id="chat-textarea"
-                className="chat-textarea"
-                rows = "3"
-                placeholder='Send a message'
-                value={this.state.textAreaInput}
-                onChange={this.handleTextAreaChange}
-                onKeyDown={this.handleKeyDown}
-              />
-          </div>
-        </div>
+          {this.state.changeNameModalVisible && (
+              <div className="modal">
+                  <div className="modal-content">
+                      <h2>Change Your Name</h2>
+                      <input
+                          type="text"
+                          placeholder="Enter your new name"
+                          value={this.state.newUsername}
+                          onChange={this.handleNewUsernameChange}
+                      />
+                      <button onClick={this.handleApplyNewUsername}>Apply</button>
+                      <button onClick={this.handleCloseChangeNameModal}>Cancel</button>
+                  </div>
+              </div>
+          )}
       </div>
-    </div>
     );
   }
+
+
 }
 
 export default App;
