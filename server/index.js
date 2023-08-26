@@ -14,11 +14,22 @@ const writer = fs.createWriteStream(filePath, {flags:'a'});
 app.use(express.json());
 app.use(BASE_URL, express.static(path.resolve(__dirname, '../client/build')));
 
+let conversationStates = {}; // To keep conversation states by chat ID
+
 app.post(BASE_URL+"/api", (req, res) => {
+
+  let chatId = req.body.chatId; // Make sure to send this from client
+  if(!conversationStates[chatId]) {
+    conversationStates[chatId] = [];
+  }
+
+  // Update the conversation state
+  conversationStates[chatId].push(...req.body.chat);
+
   let requestBody = {
     "model": "gpt-3.5-turbo",
     "temperature": 0.7,
-    "messages": req.body.chat
+    "messages": conversationStates[chatId]
   };
   let axiosConfig = {
     headers: {

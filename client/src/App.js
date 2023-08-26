@@ -73,6 +73,7 @@ class App extends Component {
     var postData = {
       time: Date.now(),
       chat: this.state.currentChatThread,
+      chatId: this.state.currentChatId, // Send the chat ID to the server
       user: this.getUserParam()
     };
     
@@ -93,22 +94,20 @@ class App extends Component {
     const { isUserTurn, agents, currentChatThread, currentRoundResponses } = this.state;
   
     if (isUserTurn) {
-      // Logic for handling user's turn can go here
+      // Logic for the user's turn
       return;
     }
   
-    // Get the current agent based on the state
     const currentAgentIndex = this.state.currentAgentIndex;
     const agent = agents[currentAgentIndex];
   
-    // Add a system message for the current agent (if you still need this)
     this.addSystemMessageForAgent(agent);
   
     this.showLoading();
   
     setTimeout(() => {
-      // Simulate the API call to get the agent's message
-      this.callBackendAPI(currentChatThread)
+      // Simulate the API call, include both previous context and current round responses
+      this.callBackendAPI([...currentChatThread, ...currentRoundResponses])
         .then((res) => {
           this.hideLoading();
           
@@ -120,7 +119,7 @@ class App extends Component {
             currentChatThread: [...prevState.currentChatThread, { "role": "assistant", "content": res.data }],
             currentRoundResponses: [...prevState.currentRoundResponses, { "role": "assistant", "content": res.data }]
           }), () => {
-            // Check if we should move to the next agent or back to the user
+            // Move to next agent or back to the user
             if (currentAgentIndex === agents.length - 1) {
               this.setState({ isUserTurn: true, currentRoundResponses: [], currentAgentIndex: 0 });  // Reset to first agent
             } else {
@@ -136,12 +135,6 @@ class App extends Component {
         });
     }, agent.delay);
   };
-  
-  
-  
-  
-  
-  
   
   
   clearThread = () => {
